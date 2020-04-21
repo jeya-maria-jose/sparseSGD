@@ -11,7 +11,7 @@ logger = Logger('./logssparse')
 global step
 from optimnew import *
 import timeit
-
+from thop import profile
 
 class Net(nn.Module):
     def __init__(self):
@@ -140,7 +140,7 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     model = Net().to(device)
-    optimizer = SGD(model.parameters(), lr=args.lr)
+    optimizer = sparseSGD(model.parameters(), lr=args.lr)
 
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     
@@ -154,6 +154,10 @@ def main():
             data, target = data.to(device), target.to(device)
             optimizer.zero_grad()
             output = model(data)
+
+            macs, params = profile(model, inputs=(data, ))
+            print(macs,params)
+            # break
             loss = F.nll_loss(output, target)
             loss.backward()
             # print(batch_idx)
