@@ -6,31 +6,46 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
-from logger import Logger 
-logger = Logger('./logssparse')
-global step
-from optimnew import *
-import timeit
-from thop import profile
+import pdb
+
+
+def add_noise(img):
+    noise = torch.randn(img.size()) * 0.2
+    noisy_img = img.cpu() + noise
+    return noisy_img
+
+
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        
+        self.encoder1 = nn.Conv2d(1, 16, 3, stride = 1,padding=1)  
+        self.encoder2=   nn.Conv2d(16, 32, 3, stride  =1,padding=1)  
+        self.encoder3 =   nn.Conv2d(32, 64, 3, stride  =1,padding=1)
+
         self.dropout1 = nn.Dropout2d(0.25)
         self.dropout2 = nn.Dropout2d(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, 10)
+
+        self.fc1 = nn.Linear(576, 100)
+        self.fc2 = nn.Linear(100, 10)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
+        x2 = x
+        x = self.encoder1(x)
         x = F.relu(x)
         x = F.max_pool2d(x, 2)
+        # print(x.shape)
+        x = F.relu(self.encoder2(x))
+        x = F.max_pool2d(x, 2)
+        # print(x.shape)
+        x = F.relu(self.encoder3(x))
+        x = F.max_pool2d(x, 2)
+        
         x = self.dropout1(x)
+        
         x = torch.flatten(x, 1)
+        
         x = self.fc1(x)
         x = F.relu(x)
         x = self.dropout2(x)
@@ -41,12 +56,12 @@ class Net(nn.Module):
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
-    if epoch==1:
-        step = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
+        noisy_data = add_noise(data)
+        noisy_data = noisy_data.cuda()        
         optimizer.zero_grad()
-        output = model(data)
+        output = model(noisy_data)
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
@@ -54,26 +69,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
-
-            info = { 'loss': loss.item() }
-            step = step + args.log_interval
-            images = data
-            for tag, value in info.items():
-                # print(tag)
-                # print(value)
-                # print(step)
-                logger.scalar_summary(tag, value, step+1)
-
-            for tag, value in model.named_parameters():
-                tag = tag.replace('.', '/')
-                logger.histo_summary(tag, value.data.cpu().numpy(), step+1)
-                logger.histo_summary(tag+'/grad', value.grad.data.cpu().numpy(), step+1)
-
-            
-            info = { 'images': images.view(-1, 28, 28)[:10].cpu().numpy() }
-
-            for tag, images in info.items():
-                logger.image_summary(tag, images, step+1)
 
 
 def test(args, model, device, test_loader):
@@ -98,12 +93,12 @@ def test(args, model, device, test_loader):
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N',
-                        help='number of epochs to train (default: 14)')
+                        help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
@@ -112,7 +107,7 @@ def main():
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=10000, metavar='N',
                         help='how many batches to wait before logging training status')
 
     parser.add_argument('--save-model', action='store_true', default=False,
@@ -140,68 +135,61 @@ def main():
         batch_size=args.test_batch_size, shuffle=True, **kwargs)
 
     model = Net().to(device)
-    optimizer = sparseSGD(model.parameters(), lr=args.lr)
+    dictionary_old = torch.load("mnist_cnn.pt")
+    # from collections import 
+    model.load_state_dict(dictionary_old)
 
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-    timetot = 0
-    for epoch in range(1, args.epochs + 1):
-        
-        start = timeit.default_timer()
-        model.train()
-        if epoch==1:
-            step = 0
-        for batch_idx, (data, target) in enumerate(train_loader):
+    model.eval()
+    test_loss = 0
+    correct = 0
+    # pdb.set_trace()
+    with torch.no_grad():
+        for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
-            output = model(data)
+            # print(data.shape)
+            output1 = model.encoder1(data)
+            y = data.view((data.shape[0], data.shape[1], -1))
+            D_mat = output1.view(output1.shape[0], output1.shape[1], -1)
+            y = y.permute(0, 2, 1)
+            op = torch.bmm(D_mat, y)
+            op = op.view(op.shape[0], -1)
+            _, indices = torch.topk(op, int(output1.shape[1]/2), dim=1, largest = False)
+            for i in range(0,output1.shape[0]):
+                output1[i,indices[i],:,:] = 0
+            print(output1.shape)
+            model.encoder1.weight = torch.nn.parameter.Parameter(output1)
 
-            
-            # break
-            loss = F.nll_loss(output, target)
-            loss.backward()
-            # print(batch_idx)
-            optimizer.step()
-
-            # macs, params = profile(model, inputs=(data, ))
-            # print(macs,params)
-            if batch_idx % args.log_interval == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                    epoch, batch_idx * len(data), len(train_loader.dataset),
-                    100. * batch_idx / len(train_loader), loss.item()))
-
-                info = { 'loss': loss.item() }
-                step = step + args.log_interval
-                images = data
-                for tag, value in info.items():
-                    # print(tag)
-                    # print(value)
-                    # print(step)
-                    logger.scalar_summary(tag, value, step+1)
-
-                for tag, value in model.named_parameters():
-                    tag = tag.replace('.', '/')
-                    logger.histo_summary(tag, value.data.cpu().numpy(), step+1)
-                    logger.histo_summary(tag+'/grad', value.grad.data.cpu().numpy(), step+1)
-
-                
-                info = { 'images': images.view(-1, 28, 28)[:10].cpu().numpy() }
-
-                for tag, images in info.items():
-                    logger.image_summary(tag, images, step+1)
+            output2 = model.encoder2(data)
+            y = data.view((data.shape[0], data.shape[1], -1))
+            D_mat = output2.view(output2.shape[0], output2.shape[1], -1)
+            y = y.permute(0, 2, 1)
+            op = torch.bmm(D_mat, y)
+            op = op.view(op.shape[0], -1)
+            _, indices = torch.topk(op, int(output2.shape[1]/2), dim=1, largest = False)
+            for i in range(0,output2.shape[0]):
+                output2[i,indices[i],:,:] = 0
+            print(output2.shape)
+            model.encoder2.weight = torch.nn.parameter.Parameter(output2)
 
 
-        test(args, model, device, test_loader)
-        scheduler.step()
-        stop = timeit.default_timer()
-        timetmp = stop - start
-        timetot = timetmp + timetot
-        print('Time: ', stop - start)  
 
-    print("Total time = ", timetot )
-    if args.save_model:
-        torch.save(model.state_dict(), "mnist_cnn.pt")
+    print("DONE")
+
+
+
+    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
+    # for epoch in range(1, args.epochs + 1):
+    #     train(args, model, device, train_loader, optimizer, epoch)
+        
+
+    #     test(args, model, device, test_loader)
+    #     scheduler.step()
+
+    # if args.save_model:
+    #     torch.save(model.state_dict(), "mnist_cnn.pt")
+
+        
 
 
 if __name__ == '__main__':
-    
     main()

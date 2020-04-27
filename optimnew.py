@@ -187,6 +187,7 @@ class sparseSGD(Optimizer):
             nesterov = group['nesterov']
 
             for p in group['params']:
+                # print(p.shape)
                 if p.grad is None:
                     continue
                 # print(p.shape)
@@ -194,9 +195,9 @@ class sparseSGD(Optimizer):
                 # print(d_p.shape)
                 dpsize = d_p.shape
                 fn = dpsize[0]
-                k = int(0.2 * fn)
+                k = int(0.3 * fn)
                 # print(dpsize[0])
-                ndp = torch.zeros(dpsize[1:],dtype = torch.long)
+                # ndp = torch.zeros(dpsize[1:],dtype = torch.long)
                 # print(ndp.shape)
                 # print(d_p.is_cuda)
                 #d_p  = d_p.cpu()
@@ -204,10 +205,13 @@ class sparseSGD(Optimizer):
                 # print(d_p.indices.shape)
                 # ind = d_p.indices.shape[0]
                 # print(d_p.val)
-                ind = np.random.permutation(fn)
-                #print(d_p.shape, ind, k)
+                # ind = np.random.permutation(fn)
+                # print(ind)
+                # print(d_p.shape, ind, k)
                 #if 
-                d_p[ind[:k]] = 0  
+                d_p[0:k] = 0  
+                # print(d_p)
+                # break
                 # ndp = ndp.cuda()
                 
                 # print(ndp.is_cuda)
@@ -245,6 +249,6 @@ class sparseSGD(Optimizer):
                     else:
                         d_p = buf
 
-                p.add_(d_p.cuda(), alpha=-group['lr'])
+                p.add_(d_p, alpha=-group['lr'])
 
         return loss
