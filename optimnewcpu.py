@@ -344,10 +344,10 @@ class sparserandSGD(Optimizer):
                 # print(d_p)
                 d_p = torch.flatten(d_p)
                 # print(d_p.shape)
-                mask = torch.ones(d_p.shape).cuda()
+                mask = torch.ones(d_p.shape)
 
                 indices = torch.randperm(mask.shape[0])
-                indices = indices[:int(indices.shape[0]*1/2)]
+                indices = indices[:int(indices.shape[0]*0.8)]
                 mask[indices] = 0
 
                 d_p = torch.mul(d_p,mask)
