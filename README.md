@@ -16,7 +16,7 @@ Running Command for mnist_run_unet.py :
 python3 mnist_run_unet.py --lr 0.1 --epochs 30
 ```
 
-Codes for reconstruction and regression using sparse SGD can be found in regress.py and cifar_run.py ; 
+Codes for reconstruction and regression using sparse SGD can be found in ```regress.py``` and ```cifar_run.py ```; 
 
 Other supporting codes to observe the gradient updates and convergence plots are also uploaded.
 
